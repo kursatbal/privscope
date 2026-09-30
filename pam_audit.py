@@ -1501,6 +1501,69 @@ class ListEditor(tk.Toplevel):
         self.destroy()
 
 
+HELP_TEXT = (
+    ('h1', 'PrivScope nasıl kullanılır?'),
+    ('p', 'Sunucularda kimin yönetici (yetkili) olduğunu tarar ve tek dosyalık HTML rapor üretir. '
+          'Yalnızca okuma yapar; şifreler yalnızca bellekte tutulur.'),
+    ('h2', 'Hızlı başlangıç'),
+    ('li', '1. Sunucu listesi: "vCenter\'dan canlı çek" ya da "Hazır dosyadan oku" (RVTools/Excel/CSV/txt) seç, '
+           '"Listeyi getir"e bas.'),
+    ('li', '2. Açılan tabloda satıra çift tıkla: kullanıcı, şifre ve Erişim türünü gir. Ortak şifreli '
+           'sunucuları seçip "Seçililere aynı cred / erişim türü ata…" ile toplu gir.'),
+    ('li', '3. Windows / Linux varsayılan giriş bilgilerini gir (tümünde aynıysa).'),
+    ('li', '4. İstersen "Domain yetkileri"ni Etkin yap, DC adresini yaz. Özel yetkili grupların (örn. VIP0) '
+           'adını "Ek gruplar"a yaz ya da otomatik buldur.'),
+    ('li', '5. "Taramayı başlat", kayıt yerini seç, bitince HTML raporu tarayıcıda aç.'),
+    ('h2', 'Erişim türleri'),
+    ('li', 'Windows · Domain: domain\'e bağlı Windows. Üstteki domain admin bilgisi kullanılır.'),
+    ('li', 'Windows · Lokal: domain dışı Windows. Satırdaki yerel yönetici (örn. Administrator) kullanılır.'),
+    ('li', 'Linux: SSH ile bağlanır. Satırdaki kullanıcı/şifre (root ya da sudo yetkili).'),
+    ('li', 'otomatik: işletim sistemi bilinmiyorsa portlara bakılarak belirlenir.'),
+    ('h2', 'Hedeflerde gerekenler'),
+    ('li', 'Windows: yerel Administrators üyesi hesap. WinRM açık olmalı (5985/5986): yönetici PowerShell\'de '
+           '"Enable-PSRemoting -Force". WinRM yoksa otomatik WMI/DCOM (135 + dinamik RPC), o da yoksa ADSI (445) denenir.'),
+    ('li', 'Lokal Windows\'ta yerleşik olmayan yönetici hesabı için: HKLM\\SOFTWARE\\Microsoft\\Windows\\'
+           'CurrentVersion\\Policies\\System\\LocalAccountTokenFilterPolicy = 1 (DWORD).'),
+    ('li', 'Domain grupları: DC\'de WinRM ve ActiveDirectory modülü.'),
+    ('li', 'Linux: SSH (22), parola girişi açık, root ya da sudo yetkili hesap (sudo için aynı şifre kullanılır).'),
+    ('li', 'vCenter: 443, en az salt okunur (Read-only) rol.'),
+    ('h2', 'Sık karşılaşılan mesajlar'),
+    ('li', 'kimlik doğrulama reddedildi: kullanıcı/şifre o makinede geçersiz. Lokal makinede "Windows · Lokal" seç.'),
+    ('li', 'zaman aşımı: makine kapalı ya da güvenlik duvarı engelliyor (5985/135/445).'),
+    ('li', 'bağlantı reddedildi: port dinlenmiyor (WinRM kapalı).'),
+    ('li', 'Erişim: cred yok: satırda ve varsayılanda kullanıcı/şifre girilmemiş.'),
+    ('li', 'InvalidLogin (vCenter): vCenter kullanıcı adı ya da şifresi yanlış.'),
+    ('h2', 'Güvenlik'),
+    ('li', 'Hiçbir hesabı, grubu ya da ayarı değiştirmez. Şifreler diske yazılmaz, günlükte gizlenir.'),
+    ('li', 'Yanlış şifreyle çok sayıda makineye denemek hesabı kilitleyebilir; ilk taramada küçük bir liste dene.'),
+    ('li', 'Rapor gerçek hesap bilgisi içerir; ekip dışına çıkarmadan önce kontrol et.'),
+)
+
+
+class HelpWindow(tk.Toplevel):
+    """Uygulama içi kısa kullanım kılavuzu (F1 / Yardım düğmesi)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title('PrivScope Yardım')
+        self.configure(bg=BG)
+        self.geometry('720x640')
+        self.minsize(520, 360)
+        wrap = tk.Frame(self, bg=BG)
+        wrap.pack(fill='both', expand=True, padx=14, pady=14)
+        box = ScrolledText(wrap, wrap='word', relief='flat', bd=0, bg=CARD, fg=INK, padx=18, pady=14,
+                           font=(FONT, 10), highlightthickness=1, highlightbackground=EDGE)
+        box.pack(fill='both', expand=True)
+        box.tag_configure('h1', font=(FONT, 15, 'bold'), spacing1=2, spacing3=6)
+        box.tag_configure('h2', font=(FONT, 11, 'bold'), foreground=TEAL, spacing1=14, spacing3=4)
+        box.tag_configure('p', spacing3=4)
+        box.tag_configure('li', lmargin1=14, lmargin2=30, spacing3=3)
+        for style, text in HELP_TEXT:
+            box.insert('end', text + '\n', style)
+        box.configure(state='disabled')
+        self.bind('<Escape>', lambda e: self.destroy())
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1533,6 +1596,7 @@ class App(tk.Tk):
         self._log_card(right)
         self.sync_source()
         self.sync_domain()
+        self.bind('<F1>', self.show_help)
         self.after(100, self.poll)
 
     # -- kurulum ----------------------------------------------------------
@@ -1555,6 +1619,13 @@ class App(tk.Tk):
         st.configure('Card.TCheckbutton', background=CARD, foreground=INK, font=(FONT, 9))
         st.map('Card.TCheckbutton', background=[('active', CARD)])
 
+    def show_help(self, event=None):
+        if getattr(self, '_help', None) is not None and self._help.winfo_exists():
+            self._help.lift()
+            self._help.focus_set()
+        else:
+            self._help = HelpWindow(self)
+
     def _header(self):
         h = tk.Frame(self, bg=DARK)
         h.pack(fill='x')
@@ -1564,7 +1635,10 @@ class App(tk.Tk):
         tk.Label(box, text='Yetkili hesap envanteri: Domain, Windows, Linux', bg=DARK,
                  fg='#a7c4bf', font=(FONT, 9)).pack(anchor='w')
         tk.Label(h, text='Yalnızca okuma yapar. Şifreler diske yazılmaz.', bg=DARK, fg='#a7c4bf',
-                 font=(FONT, 9)).pack(side='right', padx=24)
+                 font=(FONT, 9)).pack(side='right', padx=(8, 24))
+        tk.Button(h, text='Yardım (F1)', command=self.show_help, bg='#1c4b45', fg='#f4f2ee',
+                  activebackground='#2a5c55', activeforeground='#ffffff', relief='flat', bd=0,
+                  font=(FONT, 9, 'bold'), padx=12, pady=5, cursor='hand2').pack(side='right')
 
     def _card(self, parent, step, title):
         outer = tk.Frame(parent, bg=CARD, highlightbackground=EDGE, highlightthickness=1)

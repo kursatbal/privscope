@@ -24,6 +24,8 @@ tek dosyalık, aranabilir bir HTML rapora döker. Yalnızca **okuma** yapar, hi�
 4. **Taramayı başlat**, kayıt yerini seç.
 5. Bitince açılan HTML raporu tarayıcıda aç.
 
+Uygulamanın içinde, sağ üstteki **Yardım (F1)** düğmesi kısa bir kullanım kılavuzu açar (adımlar, erişim türleri, hedeflerde gerekenler, sık hatalar).
+
 ## Adım adım kullanım
 
 ### 1) Sunucu listesi
