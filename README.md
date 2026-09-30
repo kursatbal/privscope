@@ -98,28 +98,118 @@ Tek dosyalık HTML: sunucuya gerek yok, tarayıcıda açılır. Solda sayfalar (
 
 **Rozetler:** `Group` (grup), `Disabled` (devre dışı), `Locked` (kilitli), `Orphan SID` (silinmiş hesap), `Unreachable` (erişilemedi).
 
-## Windows'a nasıl bağlanır?
+## Erişim yöntemleri ve gereksinimler
 
-Sırayla denenir; ilki başarılı olunca durur:
+PrivScope her hedefe **kendi çalıştığı Windows bilgisayardan** bağlanır ve yalnızca okuma yapar. Hedef makinede ajan kurmaz, dosya bırakmaz, ayar değiştirmez. Hangi hedefe nasıl bağlanacağı **Erişim** seçimine ve girdiğin kullanıcıya bağlıdır.
 
-1. **WinRM** (5985/5986): en hızlı ve eksiksiz yol.
-2. **WMI/DCOM** (135 + dinamik RPC): WinRM kapalıysa. Grup üyeleri ve Domain/Workgroup bilgisini eksiksiz verir.
-3. **ADSI/445**: yalnızca 445 açıksa. Bazı makineler bu yolla grup üyesi vermez; o zaman Administrators için `okunamadi` yazılır.
+### Genel bakış
 
-Kimlik bilgisi **reddedilirse** diğer yöntemler denenmez: aynı yanlış şifreyle ikinci deneme hesabı kilitleyebilir.
+| Hedef | Erişim seçimi | Bağlantı | Hangi hesap |
+|---|---|---|---|
+| Domain'e bağlı Windows | `Windows · Domain` | WinRM → WMI/DCOM → ADSI | Domain admin (ya da hedefte yerel Administrators üyesi bir domain hesabı) |
+| Domain dışı / workgroup Windows | `Windows · Lokal` | WinRM → WMI/DCOM → ADSI | Makinenin kendi yerel yöneticisi (ör. `Administrator`) |
+| Linux | `Linux` | SSH | `root` ya da sudo yetkili kullanıcı |
+| Domain yetkili grupları | Domain kartı **Etkin** | DC'ye WinRM | Domain admin |
+| vCenter listesi | Kaynak: vCenter | vCenter API (443) | En az salt okunur (Read-only) rol |
 
-Linux'ta SSH (22) kullanılır. Root olmayan kullanıcıda komutlar `sudo -S` ile çalışır (aynı şifre sudo için de kullanılır).
+### Windows: domain'e bağlı makineler
 
-## Gereksinimler
+- **Hesap:** `ALAN\kullanici` biçiminde, hedef makinenin yerel **Administrators** grubunda olan bir hesap. Domain Admins üyesi hesaplar varsayılan olarak buna sahiptir.
+- **Bağlantı:** PrivScope makineye **IP ile** bağlanır, bu yüzden kimlik doğrulama **NTLM (Negotiate)** ile yapılır. Hedefin domain ile güvenli kanalı sağlam olmalıdır (makine hesabı bozuksa domain hesapları girişte reddedilir).
+- **Hedefte gerekenler:** WinRM açık olmalı (aşağıya bak).
+- **Ağ:** PrivScope makinesinden hedefe 5985 (HTTP) ya da 5986 (HTTPS).
 
-| Ne | Ayrıntı |
+### Windows: domain dışı (lokal / workgroup) makineler
+
+- **Hesap:** Makinenin kendi yerel yöneticisi. Kullanıcıyı `Administrator` (ya da `MAKINE\Administrator`) yaz, `Erişim`i `Windows · Lokal` yap. Domain hesabı bu makinelerde geçmez.
+- **Yerleşik `Administrator`** uzaktan sorunsuz çalışır (devre dışı değilse ve şifresi boş değilse).
+- **Yerleşik olmayan** yerel yönetici hesapları için Windows uzaktan yetkiyi kısıtlar (UAC uzak filtresi). Hedefte bir kere şu kayıt defteri değeri gerekir:
+  ```
+  HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+  LocalAccountTokenFilterPolicy = 1 (DWORD)
+  ```
+- **Hedefte gerekenler:** WinRM açık (ya da WMI/ADSI için aşağıdaki portlar). Şifre boş olamaz.
+
+### WinRM'i açma (hedef Windows makinelerde)
+
+Yönetici PowerShell'de bir kere:
+
+```
+Enable-PSRemoting -Force
+```
+
+Bu, WinRM servisini başlatır ve güvenlik duvarında **5985** için izin verir (domain/özel profilde). Çok sayıda makinede tek tek yapmak yerine **GPO** ile açmak daha pratiktir (*Windows Remote Management* servisi otomatik başlasın, *Allow remote server management through WinRM* ilkesi açık olsun, 5985 güvenlik duvarı kuralı gelsin).
+
+Kontrol: PrivScope'un çalıştığı bilgisayarda `Test-NetConnection <ip> -Port 5985` sonucu `True` olmalı.
+
+### WinRM yoksa: otomatik yedek yollar
+
+WinRM'e **ulaşılamazsa** (zaman aşımı ya da port kapalı) sırayla şunlar denenir. Kimlik bilgisi **reddedilirse** denenmez (yanlış şifreyle ikinci deneme hesabı kilitleyebilir).
+
+| Sıra | Yöntem | Hedefte açık olması gerekenler | Not |
+|---|---|---|---|
+| 1 | **WinRM** | 5985 / 5986 | En hızlı, eksiksiz |
+| 2 | **WMI/DCOM** | 135 + dinamik RPC portları (49152-65535), güvenlik duvarında *Windows Management Instrumentation* kuralı | Grup üyeleri ve Domain/Workgroup bilgisini eksiksiz verir |
+| 3 | **ADSI (SAMR)** | 445 (SMB) | Yalnızca 445 açıksa. Bazı makinelerde uzaktan grup üyesi listesi vermez; o zaman Administrators için `okunamadi` yazılır |
+
+Bu iki yedek yol, PrivScope'un çalıştığı bilgisayardaki **Windows PowerShell 5.1** ile yapılır (Windows'ta hazır gelir, kurulum gerekmez).
+
+### Domain yetkili grupları (DC)
+
+- **Bağlantı:** DC'ye WinRM (5985/5986), aynı Windows domain admin bilgisiyle.
+- **DC'de gerekenler:** *ActiveDirectory* PowerShell modülü (domain controller'larda varsayılan gelir) ve WinRM.
+- **Ne okunur:** Domain Admins, Enterprise Admins, Schema Admins, Administrators (Builtin), Account/Server/Print/Backup Operators, Group Policy Creator Owners; ayrıca *Ek gruplar* ve otomatik bulunan `adminCount=1` özel gruplar. Gruplar SID ile bulunur (Türkçe Windows'ta da çalışır). İç içe gruplar açılır.
+- Domain seçeneği açıkken sunucuların yerel yönetici grubunda geçen domain grupları da DC'den çözülür.
+
+### Linux
+
+- **Bağlantı:** SSH (22), **parola ile** giriş. Anahtar ile giriş desteklenmez.
+- **Hesap:** `root` önerilir. Root SSH girişi kapalıysa **sudo yetkili** bir kullanıcı gir; komutlar `sudo -S` ile çalışır ve **aynı şifre** sudo için de kullanılır.
+- **Hedefte gerekenler:**
+  - SSH sunucusunda `PasswordAuthentication yes` (parola girişi açık).
+  - sudo kullanılıyorsa hesap sudoers'ta olmalı ve `requiretty` kapalı olmalı.
+  - Root olmayan hesapta `Defaults targetpw` açıksa sudo, hedef kullanıcının şifresini ister; bu durum raporda `targetpw` bulgusu olarak işaretlenir.
+  - Standart araçlar: `bash`, `awk`, `getent`, `grep` (tüm dağıtımlarda vardır).
+- **Ağ:** PrivScope makinesinden hedefe 22.
+- Kilitli hesapların tespiti `/etc/shadow` okumayı gerektirir; bu yüzden root ya da sudo yetkisi şarttır.
+
+### Ne okunur, ne yapılmaz?
+
+PrivScope **hiçbir hesabı, grubu, ayarı ya da dosyayı değiştirmez**. Okunanlar:
+
+| Platform | Okunan |
 |---|---|
-| İşletim sistemi | Windows (uygulama Windows'ta çalışır) |
-| Python (kaynaktan çalıştırırsan) | 3.11+ |
-| Ağ portları | vCenter 443 · Windows 5985/5986 (veya 135+445) · Linux 22 · DC 5985 |
-| Yetki | Hedef makinelerde yönetici (Windows) ya da root/sudo (Linux) |
+| Windows | Yerel *Administrators* ve *Remote Desktop Users* grup üyeleri, yerel kullanıcılar (devre dışı bilgisi), domain/workgroup bilgisi |
+| Linux | `/etc/passwd` (UID 0), `sudo`/`wheel`/`admin` grup üyeleri, `/etc/sudoers` ve `/etc/sudoers.d/*` (yorum ve `Defaults` hariç), giriş shell'i olan kullanıcılar ve kilit bilgisi (`/etc/shadow`) |
+| Domain | Yukarıda sayılan yetkili grupların üyeleri (AD'den salt okuma) |
 
-Gerekli paketler: `pip install pyvmomi paramiko openpyxl pypsrp` (`openpyxl` yalnızca Excel/RVTools listesini okumak için).
+### PrivScope'un çalıştığı bilgisayar
+
+- Windows (exe için başka bir şey kurmak gerekmez). Kaynaktan çalıştırırsan Python 3.11+ ve `pip install pyvmomi paramiko openpyxl pypsrp`.
+- Hedeflere yukarıdaki portlardan ağ erişimi.
+- Aynı anda çok sayıda makineyi taradığı için, güvenlik duvarı/IPS bu bilgisayardan gelen bağlantıları engellemiyor olmalı.
+
+### Port özeti
+
+| Port | Ne için | Yön |
+|---|---|---|
+| 443 | vCenter | PrivScope → vCenter |
+| 5985 / 5986 | WinRM (Windows, DC) | PrivScope → hedef |
+| 135 + dinamik RPC | WMI/DCOM yedeği | PrivScope → hedef |
+| 445 | ADSI yedeği (SMB) | PrivScope → hedef |
+| 22 | SSH (Linux) | PrivScope → hedef |
+
+### Bir makineye erişimi elle sınama
+
+PrivScope çalıştığı bilgisayardan (PowerShell):
+
+```
+Test-NetConnection <ip> -Port 5985     # WinRM
+Test-NetConnection <ip> -Port 445      # ADSI yedeği
+Test-NetConnection <ip> -Port 22       # SSH (Linux)
+```
+
+Sonuç `False` ise makine kapalı ya da güvenlik duvarı engelliyor demektir. `True` ama PrivScope kimlik hatası veriyorsa hesap/şifre o makinede geçerli değildir (ör. domain hesabıyla lokal makine).
 
 ## Sık karşılaşılan sorunlar
 
