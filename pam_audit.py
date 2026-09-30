@@ -1632,7 +1632,7 @@ class App(tk.Tk):
         box = tk.Frame(h, bg=DARK)
         box.pack(side='left', padx=24, pady=14)
         tk.Label(box, text='PrivScope', bg=DARK, fg='#f4f2ee', font=(FONT, 15, 'bold')).pack(anchor='w')
-        tk.Label(box, text='Yetkili hesap envanteri: Domain, Windows, Linux', bg=DARK,
+        tk.Label(box, text='Sunucularda kimin yönetici olduğunu gösterir', bg=DARK,
                  fg='#a7c4bf', font=(FONT, 9)).pack(anchor='w')
         tk.Label(h, text='Yalnızca okuma yapar. Şifreler diske yazılmaz.', bg=DARK, fg='#a7c4bf',
                  font=(FONT, 9)).pack(side='right', padx=(8, 24))
