@@ -18,7 +18,7 @@ tek dosyalık, aranabilir bir HTML rapora döker. Yalnızca **okuma** yapar, hi�
 
 ## EXE ile hızlı başlangıç
 
-1. `PrivScope.exe` dosyasını çalıştır (kurulum gerekmez). Exe yoksa aşağıdaki [EXE üretme](#exe-üretme) bölümüne bak.
+1. [Releases](https://github.com/kursatbal/privscope/releases/latest) sayfasından `PrivScope.exe` dosyasını indir ve çalıştır (kurulum gerekmez). Exe imzasız olduğu için Windows SmartScreen uyarı verebilir (**Daha fazla bilgi → Yine de çalıştır**); bazı antivirüsler PyInstaller ile paketlenmiş araçları yanlış işaretleyebilir. Güvenmek istemezsen kaynağı okuyup kendin derleyebilirsin: [EXE üretme](#exe-üretme). İndirdiğin dosyayı Releases sayfasındaki SHA256 değeriyle karşılaştırabilirsin.
 2. **Sunucu listesi** kartında kaynağı seç ve listeyi getir.
 3. Windows / Linux giriş bilgilerini gir (farklı şifreliler için listede satır satır).
 4. **Taramayı başlat**, kayıt yerini seç.
@@ -248,3 +248,7 @@ pyinstaller --onefile --windowed --name PrivScope pam_audit.py
 ## Ekran görüntüleri hakkında
 
 Bu README'deki görüntüler örnek verilerle (`corp.local`, `srv-*`) üretilmiştir; gerçek bir ortamı göstermez.
+
+## Lisans
+
+MIT. Ayrıntı için [LICENSE](LICENSE) dosyasına bak.
