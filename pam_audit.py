@@ -318,13 +318,13 @@ class WinRMError(RuntimeError):
         self.unreachable = unreachable
 
 
-def winrm_exec(host, user, pw, script):
+def winrm_exec(host, user, pw, script, ports=((False, 5985), (True, 5986))):
     """PowerShell'i WinRM ile çalıştırır, '@@' bölümlerini döndürür."""
     from pypsrp.client import Client
 
     errors = []
     # Önce HTTP (5985), olmazsa HTTPS (5986)
-    for ssl_on, port in ((False, 5985), (True, 5986)):
+    for ssl_on, port in ports:
         try:
             client = Client(host, username=user, password=pw, ssl=ssl_on, port=port,
                             cert_validation=False, auth='negotiate',
@@ -338,8 +338,8 @@ def winrm_exec(host, user, pw, script):
             raise RuntimeError(errs[-1] if errs else 'beklenmeyen WinRM çıktısı')
         return parse_sections(out)
     net = all(m.startswith(('zaman aşımı', 'bağlantı reddedildi')) for _, m in errors)
-    if len({m for _, m in errors}) == 1:  # iki port aynı sebepten düştüyse tek satır
-        raise WinRMError(f'{errors[0][0]}/{errors[1][0]}: {errors[0][1]}', net)
+    if len({m for _, m in errors}) == 1:  # portlar aynı sebepten düştüyse tek satır
+        raise WinRMError(f'{"/".join(str(pt) for pt, _ in errors)}: {errors[0][1]}', net)
     raise WinRMError(' | '.join(f'{pt}: {m}' for pt, m in errors) or 'bağlantı kurulamadı', net)
 
 
@@ -444,21 +444,49 @@ def _fix_member(line):
     return f'{parts[1]}\\{parts[2]}' if len(parts) == 3 else line
 
 
+def _open_ports(host, ports=(5985, 5986, 135, 445), timeout=3):
+    """Hangi portlar açık? (paralel, en kötü ~3 sn). Kapalı yolları boşuna denememek için."""
+    import socket
+
+    def one(port):
+        try:
+            socket.create_connection((host, port), timeout=timeout).close()
+            return True
+        except OSError:
+            return False
+    with ThreadPoolExecutor(len(ports)) as pool:
+        return dict(zip(ports, pool.map(one, ports)))
+
+
 def scan_windows(vm, user, pw, rep):
-    try:
-        sec = winrm_exec(vm['ip'], user, pw, WIN_SCRIPT)
-    except WinRMError as ex:
-        if not ex.unreachable:
-            raise
-        sec, errs = None, []
-        for label, fn in (('WMI/DCOM', wmi_exec), ('ADSI/445', adsi_exec)):  # WinRM yok/kapalı
+    host = vm['ip']
+    open_ = _open_ports(host)
+    if not any(open_.values()):
+        raise RuntimeError('5985/5986/135/445 yanıt vermiyor (makine kapalı ya da güvenlik duvarı engelliyor)')
+    winrm_ports = tuple(x for x in ((False, 5985), (True, 5986)) if open_[x[1]])
+
+    sec, label, first = None, 'WinRM', None
+    if winrm_ports:
+        try:
+            sec = winrm_exec(host, user, pw, WIN_SCRIPT, winrm_ports)
+        except WinRMError as ex:
+            if not ex.unreachable:  # kimlik reddi vb.: yedek yollar denenmez (hesap kilidi riski)
+                raise
+            first = str(ex)
+    else:
+        first = '5985/5986 kapalı'
+    if sec is None:  # WinRM yok/kapalı: yalnızca portu açık olan yedek yolları dene
+        errs = []
+        for label, port, fn in (('WMI/DCOM', 135, wmi_exec), ('ADSI/445', 445, adsi_exec)):
+            if not open_[port]:
+                continue
             try:
-                sec = fn(vm['ip'], user, pw)
+                sec = fn(host, user, pw)
                 break
             except Exception as ax:
                 errs.append(f'{label}: {" ".join(str(ax).split())[:100]}')
         if sec is None:
-            raise RuntimeError(f'{ex} || ' + ' | '.join(errs))
+            raise RuntimeError(' || '.join([first] + errs))
         if label == 'ADSI/445':  # ADSI bazı makinelerde grup üyesi vermez; Administrators asla boş olamaz
             sec['SYS'] = ['Domain: bilinmiyor (WinRM/WMI yok, ADSI/445 ile okundu)']
             if not sec.get('ADMIN'):
