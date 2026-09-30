@@ -232,6 +232,10 @@ Sonuç `False` ise makine kapalı ya da güvenlik duvarı engelliyor demektir. `
 - **Rapor gerçek hesap bilgisi içerir.** Müşteri ya da ekip dışına çıkarmadan önce kontrol et.
 - Excel/RVTools listesine yazdığın şifreler düz metindir; tarama sonrası ilgili kolonları sil.
 
+## Sorumlu kullanım
+
+PrivScope bir **yönetici/denetim aracıdır**. Yalnızca sahibi olduğun ya da denetim yetkisi verilmiş sistemlerde, kendi yetkili hesabınla kullan. Hiçbir hesabı değiştirmez, ama yanlış şifreyle çok sayıda makineye bağlanmak hesap kilitlenmesine yol açabilir; ilk taramayı küçük bir listeyle dene. Yazılım olduğu gibi sunulur, garanti verilmez.
+
 ## EXE üretme
 
 ```
