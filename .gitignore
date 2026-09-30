@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+
+# yerel denylist (gerçek müşteri terimleri) — depoya girmez
+.commit-denylist.txt
+
+# müşteri/lab verisi ve üretilen raporlar — depoya girmez
+pam_linux.py
+PROJE.md
+ornek_rapor.html
+PrivScope_*.html
+*.xlsx
+*.csv
